@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-8Hb7Ln1w8q33wZ5wbycF5BUxc9LFoQBEOzLEDlliWXQ='; style-src 'sha256-IChTWON6/z5HWQQswL09pajRVvzMTYBAgeDcNoF2k8o='; img-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'; object-src 'none'; frame-src 'none'; worker-src 'none'">
+<script>(() => {
+  "use strict";
+  // Prepared for Harbor X. No OAuth client secret, token exchange or network API.
+  const cfg = {"origin":"https://mahdi88m2025-afk.github.io","path":"/Harbor-X-Auth/anilist/","provider":"anilist"};
+  let payload = null;
+  let reason = "Start the connection from Harbor X, then return here from the provider.";
+  let timer;
+  let copied = false;
+  let cleared = false;
+  // Clear query/fragment before parsing or rendering any authorization values.
+  // The initial HTTPS request has already reached the host; this cannot erase its logs.
+  let original = location.href;
+  let cleaned = false;
+  try {
+    history.replaceState(null, "", location.pathname);
+    cleaned = !location.search && !location.hash;
+  } catch { /* Fail closed below; never print the URL or exception. */ }
+  try { window.opener = null; } catch { /* No messages to another window. */ }
+  try {
+    const u = new URL(original);
+    if (!cleaned || window.top !== window.self || !window.isSecureContext ||
+        u.origin !== cfg.origin || u.pathname !== cfg.path || u.username || u.password ||
+        !["trakt", "anilist", "mal"].includes(cfg.provider)) throw Error();
+    if (original.length > 40000) throw Error();
+    const p = cfg.provider === "anilist" ? new URLSearchParams(u.hash.slice(1)) : u.searchParams;
+    if ((cfg.provider === "anilist" && u.search) || (cfg.provider !== "anilist" && u.hash)) throw Error();
+    const one = (key) => p.getAll(key).length === 1 ? p.get(key) : null;
+    const state = one("state");
+    if (!state || !/^[A-Za-z0-9_-]{43,128}$/.test(state)) throw Error();
+    const safe = new URLSearchParams({state});
+    if (p.has("error")) {
+      if (!one("error") || p.has("code") || p.has("access_token")) throw Error();
+      safe.set("error", "access_denied");
+      reason = "Authorization was not completed. Return this response to Harbor X or cancel there.";
+    } else if (cfg.provider === "anilist") {
+      const token = one("access_token"), expiry = one("expires_in");
+      if (!token || token.length > 32768 || /[\s\x00-\x1f\x7f]/.test(token) ||
+          !expiry || !/^\d+$/.test(expiry) || Number(expiry) <= 0 || Number(expiry) > 2*365*86400 ||
+          p.has("code") || (p.has("token_type") && one("token_type")?.toLowerCase() !== "bearer")) throw Error();
+      safe.set("access_token", token); safe.set("expires_in", expiry);
+    } else {
+      const code = one("code");
+      if (!code || code.length > 4096 || /[\s\x00-\x1f\x7f]/.test(code) || p.has("access_token") || p.has("refresh_token")) throw Error();
+      safe.set("code", code);
+    }
+    // Shape validation only: the desktop app MUST compare its pending state and PKCE.
+    payload = cfg.origin + cfg.path + (cfg.provider === "anilist" ? "#" : "?") + safe.toString();
+    if (!p.has("error")) reason = "Response received. Harbor X must still verify it before connecting your account.";
+  } catch { /* No raw OAuth errors, codes, token values or URLs in the page/logs. */ }
+  original = null;
+
+  document.addEventListener("DOMContentLoaded", () => {
+    const status = document.getElementById("status"), copy = document.getElementById("copy");
+    const manual = document.getElementById("manual"), field = document.getElementById("callback");
+    const forget = (message) => {
+      cleared = true; payload = null; field.value = ""; field.hidden = true;
+      copy.disabled = true; manual.disabled = true;
+      clearTimeout(timer); status.textContent = message;
+    };
+    status.textContent = reason;
+    copy.disabled = manual.disabled = !payload;
+    document.getElementById("clear").addEventListener("click", () => forget("Page data cleared. You can close this tab. This does not erase your clipboard or the host's logs."));
+    copy.addEventListener("click", async () => {
+      if (!payload || copied || cleared) return;
+      copy.disabled = true;
+      try {
+        await navigator.clipboard.writeText(payload);
+        if (cleared) return;
+        copied = true;
+        forget("Copied once. Return to Harbor X and paste into its authorization dialog. Do not paste into chat. Your OS clipboard/history may retain this value.");
+      } catch {
+        if (cleared) return;
+        copy.disabled = false;
+        status.textContent = "Clipboard access was denied. Choose Show for manual copy only if this screen is private.";
+      }
+    });
+    manual.addEventListener("click", () => {
+      if (!payload || cleared) return;
+      field.value = payload; field.hidden = false; field.focus(); field.select();
+      status.textContent = "Private response is visible for manual copy. Paste only into Harbor X, then clear this page. Clipboard history may retain it.";
+    });
+    // No persistent storage. Also clear on bfcache navigation and after five minutes.
+    window.addEventListener("pagehide", () => forget("Page data cleared. Start a new attempt in Harbor X."));
+    window.addEventListener("pageshow", (event) => { if (event.persisted) forget("Restored page has no response. Start a new attempt in Harbor X."); });
+    if (payload) timer = setTimeout(() => forget("Response expired on this page. Start a new attempt in Harbor X."), 300000);
+  }, {once:true});
+})();
+</script>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow,noarchive">
+<link rel="icon" href="data:,">
+<title>Harbor X — AniList authorization</title><style>*{box-sizing:border-box}html{color-scheme:dark}body{margin:0;min-height:100vh;background:#10151d;color:#eef5ff;font:16px/1.6 system-ui,sans-serif;display:grid;place-items:center;padding:24px}main{width:min(100%,640px);padding:clamp(24px,6vw,48px);background:#17212c;border:1px solid #314355;border-radius:24px}.brand{color:#7bd5f3;font-weight:700;letter-spacing:.07em}h1{font-size:clamp(25px,6vw,36px);line-height:1.2;margin:10px 0 22px}p{color:#c2d1e0}.actions{display:flex;gap:12px;flex-wrap:wrap}button{border:1px solid #52708a;border-radius:12px;background:#21364a;color:#f6fbff;padding:12px 16px;font:inherit;cursor:pointer}#copy{background:#72cfe8;color:#092231;font-weight:700}button:disabled{opacity:.4;cursor:default}button:focus-visible,input:focus-visible{outline:3px solid #fff;outline-offset:3px}input{width:100%;margin:18px 0;padding:12px;background:#0d1720;color:#fff;border:1px solid #52708a;border-radius:10px;font:14px monospace}.small{font-size:13px}#status{padding:16px;border-radius:12px;background:#0d1720;min-height:86px}footer{border-top:1px solid #314355;margin-top:28px;padding-top:12px;color:#91a6ba;font-size:12px}[hidden]{display:none!important}</style></head>
+<body><main><div class="brand">HARBOR X · SPLASH</div><h1>Return to Harbor X</h1>
+<p>Continue your AniList connection in the desktop app. This page never asks for a password and does not exchange tokens.</p>
+<p id="status" role="status" aria-live="polite">JavaScript must run to safely handle a response. If this message remains, close this tab and start a new attempt in Harbor X. Do not share the address bar.</p>
+<div class="actions"><button id="copy" disabled>Copy response</button><button id="manual" disabled>Show for manual copy</button><button id="clear">Clear page</button></div>
+<input id="callback" readonly hidden autocomplete="off" spellcheck="false" aria-label="Private callback response for Harbor X only">
+<p class="small">Paste only into Harbor X’s authorization dialog, never into chat or a support ticket. Your browser or OS clipboard history can retain what you copy.</p>
+<footer>No analytics, third-party assets, additional page requests or persistent browser storage. GitHub hosts this static page: the initial request includes your IP and any query parameters; URL fragments are not sent in HTTP. Clearing this page does not erase host logs, browser synchronization or the clipboard.</footer>
+</main></body></html>
